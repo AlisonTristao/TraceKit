@@ -27,8 +27,14 @@ std::string render_command_output(const char* text, std::uint8_t status) {
         start = nl + 1U;
     }
     if (out.size() > Terminal::kMaxCommandOut) {
-        out.resize(Terminal::kMaxCommandOut);
-        out += "\r\n! [output truncated]\r\n";
+        // Cut at the last whole line: a cut inside a line can split a colour
+        // escape or keep the line's colour open (no closing ESC[0m), and the
+        // notice, the status and the next prompt then came out in it.
+        std::size_t cut = out.rfind("\r\n", Terminal::kMaxCommandOut - 2U);
+        cut = cut == std::string::npos ? Terminal::kMaxCommandOut : cut + 2U;
+        out.resize(cut);
+        if (out.size() < 2U || out.compare(out.size() - 2U, 2U, "\r\n") != 0) out += "\r\n";
+        out += "\x1b[0m! [output truncated]\r\n";
     }
     if (status != 0U) {
         char note[32];

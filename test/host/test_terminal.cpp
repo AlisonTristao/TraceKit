@@ -80,6 +80,21 @@ void long_output_is_truncated_with_a_notice() {
     CHECK(contains(text, "[output truncated]"));
 }
 
+void truncated_coloured_output_does_not_leave_the_colour_open() {
+    // A failed command's help, every line in red (btp with no command).
+    std::string big;
+    for (int i = 0; i < 200; ++i) big += "\x1b[31m  -option   ()  some help text for it\x1b[0m\n";
+    const std::string text = tracekit::render_command_output(big.c_str(), 254U);
+    const std::size_t notice = text.find("! [output truncated]");
+    CHECK(notice != std::string::npos);
+    const std::string before = text.substr(0U, notice);
+    // The cut fell on a line break (no half line, no split escape) and the
+    // colour is reset before the notice.
+    CHECK(before.size() >= 6U && before.compare(before.size() - 6U, 6U, "\r\n\x1b[0m") == 0);
+    CHECK(before.rfind("\x1b[31m") < before.rfind("\x1b[0m"));
+    CHECK(contains(text, "! [status=254]\r\n"));
+}
+
 void a_line_typed_during_a_command_waits_for_it() {
     Harness h;
     h.type("slow\r");
@@ -209,6 +224,7 @@ int main() {
     enter_submits_the_line_and_output_comes_back();
     a_failed_command_shows_its_status();
     long_output_is_truncated_with_a_notice();
+    truncated_coloured_output_does_not_leave_the_colour_open();
     a_line_typed_during_a_command_waits_for_it();
     a_busy_shell_refuses_with_a_notice();
     origins_do_not_share_their_line();

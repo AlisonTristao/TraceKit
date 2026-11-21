@@ -7,6 +7,10 @@ versionamento segue [SemVer](https://semver.org/lang/pt-BR/).
 ## [Não lançado]
 
 ### Corrigido
+- **Uma saída de comando longa e colorida deixava o terminal inteiro na cor dela**: o corte em
+  `kMaxCommandOut` caía no meio de uma linha, depois do `ESC[31m` e antes do `ESC[0m`, e o aviso
+  `[output truncated]`, o `[status=...]` e o prompt seguinte saíam vermelhos (o `btp` sem comando
+  fazia isso). Agora o corte cai na última linha inteira e a cor é zerada antes do aviso.
 - **A resposta de comando (`COMMAND_RESULT`) vai sem as cores ANSI do shell**: ela é lida por
   programas (o TraceView mostra como texto e tira JSON dela), e as cores apareciam como lixo
   (`[33m`). O terminal continua colorido.
