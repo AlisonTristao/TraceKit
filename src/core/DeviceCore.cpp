@@ -1429,7 +1429,7 @@ void DeviceCore::load_wifi_networks() noexcept {
 
 std::size_t DeviceCore::read_wifi_networks(WifiNetwork* out, bool log) noexcept {
     std::size_t count = 0U;
-    if (device_.wifi.ssid != nullptr && device_.wifi.ssid[0] != ' ') {
+    if (device_.wifi.ssid != nullptr && device_.wifi.ssid[0] != '\0') {
         std::snprintf(out[0].ssid, sizeof(out[0].ssid), "%s", device_.wifi.ssid);
         std::snprintf(out[0].password, sizeof(out[0].password), "%s",
                       device_.wifi.password != nullptr ? device_.wifi.password : "");
