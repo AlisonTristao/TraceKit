@@ -522,6 +522,7 @@ esp_err_t DeviceCore::create_link(Link link, const PresetSizes& sizes) noexcept 
             UsbSerialConfig config;
             config.product_name = device_.name;
             config.install_driver = device_.usb.install_driver;
+            config.install = device_.usb.install;
             config.send_queue_bytes = sizes.link_queue_bytes;
             link_ = new (std::nothrow) UsbSerialLink(config);
             break;

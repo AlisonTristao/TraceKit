@@ -114,10 +114,16 @@ enum class SerialPort : std::uint8_t {
 /// Link::Serial on the native USB port.
 struct UsbConfig {
     /// false: the application installs TinyUSB itself (a composite device,
-    /// e.g. CDC + Mass Storage, with CONFIG_TINYUSB_CDC_ENABLED) before
-    /// begin(); the library only opens the CDC port. The USB names are then
-    /// the application's.
+    /// e.g. CDC + Mass Storage, with CONFIG_TINYUSB_CDC_ENABLED); the library
+    /// only opens the CDC port. The USB names are then the application's.
     bool install_driver = true;
+    /// With install_driver false: installs the application's TinyUSB device.
+    /// The library calls it when the Serial link starts -- also when it is the
+    /// fallback for a radio link that could not start -- right before opening
+    /// the CDC port, which must come after the driver. Return true when the
+    /// device is installed (or already was). nullptr: the application
+    /// installs it before begin() itself, and then only for a Serial boot.
+    bool (*install)() = nullptr;
 };
 
 /// Link::Serial on a UART (a board's USB-serial bridge: CP210x, CH340...).

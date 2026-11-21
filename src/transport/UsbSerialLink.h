@@ -32,9 +32,11 @@ struct UsbSerialConfig {
     /// valid while the link runs (the USB stack keeps the pointer).
     const char* product_name = nullptr;
     std::size_t send_queue_bytes = 16384U;
-    /// false: the application already installed the TinyUSB driver (for
-    /// example a composite CDC + MSC device); the link only starts the CDC.
+    /// false: the application installs the TinyUSB driver (for example a
+    /// composite CDC + MSC device); the link only starts the CDC.
     bool install_driver = true;
+    /// With install_driver false: called before the CDC starts (UsbConfig).
+    bool (*install)() = nullptr;
 };
 
 class UsbSerialLink final : public LinkDriver {

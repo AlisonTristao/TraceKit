@@ -114,6 +114,12 @@ esp_err_t UsbSerialLink::start(const LinkEvents& events, ErrorInfo& error) noexc
         if (err == ESP_ERR_INVALID_STATE) {
             ESP_LOGW(kTag, "TinyUSB was already installed: the USB name is the application's");
         }
+    } else if (config_.install != nullptr && !config_.install()) {
+        // The CDC must not be opened without the driver under it: a host
+        // opening the port would reach a half-built device.
+        queue_storage_.reset();
+        return fail(error, TRACEKIT_ERR_LINK_START, kTag,
+                    "the application's USB device did not install (UsbConfig::install)");
     }
 
     g_link = this;
@@ -129,7 +135,11 @@ esp_err_t UsbSerialLink::start(const LinkEvents& events, ErrorInfo& error) noexc
                     esp_err_to_name(err));
     }
     running_.store(true);
-    ESP_LOGI(kTag, "USB CDC ready as \"%s\"", strings_[2] != nullptr ? strings_[2] : "?");
+    if (config_.install_driver) {
+        ESP_LOGI(kTag, "USB CDC ready as \"%s\"", strings_[2]);
+    } else {
+        ESP_LOGI(kTag, "USB CDC ready on the application's USB device");
+    }
     return ESP_OK;
 }
 
