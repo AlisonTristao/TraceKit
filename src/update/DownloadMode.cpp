@@ -19,6 +19,7 @@
 #endif
 
 #include "core/LogTags.h"
+#include "core/UsbHandback.h"
 
 namespace tracekit {
 
@@ -30,13 +31,9 @@ constexpr std::uint32_t kDownloadTimeoutS = kDownloadModeTimeoutS;
 
 void restart_into_download(void*) {
 #if TRACEKIT_FORCE_DOWNLOAD_RTC_CNTL
-#if CONFIG_IDF_TARGET_ESP32S3
-    // TinyUSB may hold the USB PHY (it lives in the RTC domain, which a
-    // software reset keeps): hand it back to USB-Serial-JTAG, the port the
-    // ROM downloads through on the S3.
-    CLEAR_PERI_REG_MASK(RTC_CNTL_USB_CONF_REG,
-                        RTC_CNTL_SW_HW_USB_PHY_SEL | RTC_CNTL_SW_USB_PHY_SEL | RTC_CNTL_USB_PAD_ENABLE);
-#endif
+    // TinyUSB may hold the USB PHY: hand it back to USB-Serial-JTAG, the port
+    // the ROM downloads through on the S3, with a disconnect the host sees.
+    usb_hand_back_to_jtag();
     REG_WRITE(RTC_CNTL_OPTION1_REG, RTC_CNTL_FORCE_DOWNLOAD_BOOT);
 #elif TRACEKIT_FORCE_DOWNLOAD_LP_AON
     SET_PERI_REG_MASK(LP_AON_SYS_CFG_REG, LP_AON_FORCE_DOWNLOAD_BOOT);

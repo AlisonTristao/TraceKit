@@ -13,7 +13,9 @@
 #if TRACEKIT_HAS_USB_SERIAL
 #include <esp_log.h>
 #include <esp_mac.h>
+#include <esp_system.h>
 
+#include "core/UsbHandback.h"
 #include "tinyusb.h"
 #include "tinyusb_cdc_acm.h"
 #include "tinyusb_default_config.h"
@@ -135,6 +137,15 @@ esp_err_t UsbSerialLink::start(const LinkEvents& events, ErrorInfo& error) noexc
                     esp_err_to_name(err));
     }
     running_.store(true);
+    // Every software reset from here on (btp -reboot, -recovery, a restart
+    // the application asks for) hands the PHY back to USB-Serial-JTAG first,
+    // so the next firmware -- the recovery, the bootloader -- shows up on the
+    // cable (core/UsbHandback.h). A panic skips shutdown handlers, but its
+    // reset path brings the PHY back by itself.
+    static bool handback_registered = false;
+    if (!handback_registered) {
+        handback_registered = esp_register_shutdown_handler(&usb_hand_back_to_jtag) == ESP_OK;
+    }
     if (config_.install_driver) {
         ESP_LOGI(kTag, "USB CDC ready as \"%s\"", strings_[2]);
     } else {
