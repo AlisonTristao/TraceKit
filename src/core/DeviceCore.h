@@ -109,7 +109,10 @@ public:
     /// Any task: a shell line from the application (TraceKit::run()).
     bool run(const char* line) noexcept;
     /// Any task: a line for TraceView's log panel (tracekit::log()). True when queued.
-    bool log(LogLevel level, std::uint64_t timestamp_us, const char* text, std::size_t length) noexcept;
+    /// `count_refusal`: a refused line counts as dropped (LogDropped). False
+    /// for log_record(), whose caller keeps the line and tries again later.
+    bool log(LogLevel level, std::uint64_t timestamp_us, const char* text, std::size_t length,
+             bool count_refusal = true) noexcept;
     /// True on the shell task (a command is running).
     bool in_command() const noexcept { return shell_task_ != nullptr && xTaskGetCurrentTaskHandle() == shell_task_; }
     /// The running device, for tracekit::printf() (one device per firmware).

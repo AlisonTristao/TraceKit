@@ -1137,14 +1137,14 @@ bool DeviceCore::run(const char* line) noexcept {
 }
 
 bool DeviceCore::log(LogLevel level, std::uint64_t timestamp_us, const char* text,
-                     std::size_t length) noexcept {
+                     std::size_t length, bool count_refusal) noexcept {
     if (text == nullptr || length == 0U) return false;
     // No one to read it: refuse rather than fill the queue with lines that
     // would go out stale when a peer connects. (The link, not the session:
     // ESP-NOW has no session, and its dongle is always "there".)
     const State state = state_.load();
     if ((state != State::Ready && state != State::Connected) || link_ == nullptr || !link_->connected()) {
-        errors_.note(RuntimeError::LogDropped);
+        if (count_refusal) errors_.note(RuntimeError::LogDropped);
         return false;
     }
     if (length > kMaxLogLine) length = kMaxLogLine;
@@ -1159,7 +1159,7 @@ bool DeviceCore::log(LogLevel level, std::uint64_t timestamp_us, const char* tex
                                      Priority::Normal);
         }
     }
-    if (!queued) errors_.note(RuntimeError::LogDropped);
+    if (!queued && count_refusal) errors_.note(RuntimeError::LogDropped);
     wake();
     return queued;
 }
@@ -2214,7 +2214,9 @@ bool log(LogLevel level, const char* format, ...) noexcept {
 
 bool log_record(LogLevel level, std::uint64_t timestamp_us, const char* text, std::size_t length) noexcept {
     DeviceCore* core = DeviceCore::active();
-    return core != nullptr && core->log(level, timestamp_us, text, length);
+    // The caller keeps a refused line and offers it again (log.h): a refusal
+    // is not a loss, so it does not count as LogDropped.
+    return core != nullptr && core->log(level, timestamp_us, text, length, /*count_refusal=*/false);
 }
 
 bool in_command() noexcept {
