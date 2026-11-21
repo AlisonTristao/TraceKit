@@ -1432,7 +1432,10 @@ void DeviceCore::load_wifi_networks() noexcept {
         network_count_ = 1U;
     }
     FileSystem* volume = fs();
-    if (volume == nullptr || device_.wifi.file == nullptr || !volume->exists(device_.wifi.file)) return;
+    if (volume == nullptr || device_.wifi.file == nullptr || !volume->exists(device_.wifi.file)) {
+        ESP_LOGI(tag::kWifi, "%u network(s) known", static_cast<unsigned>(network_count_));
+        return;
+    }
     static char text[kMaxWifiNetworks * (WifiNetwork::kMaxSsid + WifiNetwork::kMaxPassword + 4U)];
     std::size_t size = 0U;
     if (!volume->read(device_.wifi.file, text, sizeof(text), &size)) {
@@ -1449,6 +1452,9 @@ void DeviceCore::load_wifi_networks() noexcept {
                  device_.wifi.file, static_cast<unsigned>(parsed.skipped_lines),
                  static_cast<unsigned>(kMaxWifiNetworks));
     }
+    // Tried (and mirrored to the recovery) in alphabetical order, not file
+    // order: a phone hotspot named "alison" goes before "Pantanal 3 andar".
+    sort_wifi_networks(networks_, network_count_);
     ESP_LOGI(tag::kWifi, "%u network(s) known", static_cast<unsigned>(network_count_));
 }
 
@@ -2093,8 +2099,9 @@ void DeviceCore::register_storage_commands() noexcept {
         "wifi_add", "Add a network to the networks file", "btp");
     shell_.add(
         [this]() -> std::uint8_t {
-            // Names only, never the passwords. The one from DeviceConfig::wifi
-            // (always first) is "config": it cannot be removed from here. The
+            // Names only, never the passwords, in the order they are tried
+            // (alphabetical). The one from DeviceConfig::wifi is "config": it
+            // cannot be removed from here. The
             // rest come from the file as it is NOW, so an add or a remove
             // shows at once (the link itself uses them from the next boot).
             const bool has_config = device_.wifi.ssid != nullptr && device_.wifi.ssid[0] != '\0';
@@ -2117,6 +2124,7 @@ void DeviceCore::register_storage_commands() noexcept {
                     std::memset(text.get(), 0, kCapacity);  // passwords
                 }
             }
+            sort_wifi_networks(list.get(), count);  // the order the station tries them in
             char json[kJsonReplyBytes];
             int used = std::snprintf(json, sizeof(json), "{\"max\":%u,\"networks\":[",
                                      static_cast<unsigned>(kMaxWifiNetworks));
@@ -2130,7 +2138,7 @@ void DeviceCore::register_storage_commands() noexcept {
                 ssid[n] = '\0';
                 used += std::snprintf(json + used, sizeof(json) - static_cast<std::size_t>(used),
                                       "%s{\"ssid\":\"%s\",\"source\":\"%s\"}", i == 0U ? "" : ",", ssid,
-                                      i == 0U && has_config ? "config" : "file");
+                                      has_config && std::strcmp(list[i].ssid, device_.wifi.ssid) == 0 ? "config" : "file");
             }
             for (std::size_t i = 0U; i < kMaxWifiNetworks; ++i) {
                 std::memset(list[i].password, 0, sizeof(list[i].password));

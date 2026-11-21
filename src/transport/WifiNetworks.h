@@ -30,6 +30,11 @@ struct WifiParseResult {
 WifiParseResult parse_wifi_networks(const char* text, std::size_t size,
                                     WifiNetwork* out, std::size_t max) noexcept;
 
+/// Sorts the networks by name, case-insensitive (ties: byte order), which
+/// is the order the station tries them in: "alison" before "Pantanal",
+/// whatever line of the file each came from. Stable.
+void sort_wifi_networks(WifiNetwork* networks, std::size_t count) noexcept;
+
 /// The mDNS hostname TraceView looks for, derived from the device name with
 /// TraceView's exact rule (lib/devices/device.cpp, mdnsHostFromName): trimmed,
 /// lowercase, [a-z0-9] kept, every other run of characters becomes one '-',

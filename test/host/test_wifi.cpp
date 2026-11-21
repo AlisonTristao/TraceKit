@@ -51,6 +51,26 @@ void stops_at_an_embedded_nul() {
     CHECK(result.networks == 1U);
 }
 
+void sorts_networks_alphabetically() {
+    WifiNetwork n[4];
+    std::snprintf(n[0].ssid, sizeof(n[0].ssid), "Pantanal 3 andar");
+    std::snprintf(n[0].password, sizeof(n[0].password), "p1");
+    std::snprintf(n[1].ssid, sizeof(n[1].ssid), "alison");
+    std::snprintf(n[1].password, sizeof(n[1].password), "p2");
+    std::snprintf(n[2].ssid, sizeof(n[2].ssid), "Alison");
+    std::snprintf(n[2].password, sizeof(n[2].password), "p3");
+    std::snprintf(n[3].ssid, sizeof(n[3].ssid), "casa");
+    std::snprintf(n[3].password, sizeof(n[3].password), "p4");
+    tracekit::sort_wifi_networks(n, 4U);
+    CHECK_STR_EQ(n[0].ssid, "Alison");  // same letters: byte order, 'A' < 'a'
+    CHECK_STR_EQ(n[1].ssid, "alison");
+    CHECK_STR_EQ(n[1].password, "p2");  // the password moves with its name
+    CHECK_STR_EQ(n[2].ssid, "casa");
+    CHECK_STR_EQ(n[3].ssid, "Pantanal 3 andar");
+    CHECK_STR_EQ(n[3].password, "p1");
+    tracekit::sort_wifi_networks(nullptr, 3U);  // no crash
+}
+
 // ---- hostname (must match TraceView's mdnsHostFromName) -------------------
 
 void hostname_matches_traceview() {
@@ -227,6 +247,7 @@ int main() {
     parses_lines_comments_and_line_endings();
     too_long_fields_and_overflow_are_skipped();
     stops_at_an_embedded_nul();
+    sorts_networks_alphabetically();
     hostname_matches_traceview();
     setup_networks();
     no_networks_stays_idle();

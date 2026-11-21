@@ -71,8 +71,9 @@ public:
     /// Timeouts and backoff expiry. Call regularly (every pass of the task).
     Action tick(std::uint32_t now_ms) noexcept;
 
-    /// A scan finished. Picks the first network, in file order, that is
-    /// visible (the file order is the user's preference, not the RSSI).
+    /// A scan finished. Picks the first network, in list order, that is
+    /// visible (the list order is the preference, not the RSSI; DeviceCore
+    /// sorts it alphabetically).
     Action on_scan_done(const Visible* visible, std::size_t count, std::uint32_t now_ms) noexcept;
 
     void on_got_ip(std::uint32_t now_ms) noexcept;

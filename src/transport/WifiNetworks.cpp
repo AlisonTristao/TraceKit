@@ -42,6 +42,36 @@ WifiParseResult parse_wifi_networks(const char* text, std::size_t size,
     return result;
 }
 
+namespace {
+
+int compare_ssid(const char* a, const char* b) noexcept {
+    for (std::size_t i = 0U;; ++i) {
+        const unsigned char ca = static_cast<unsigned char>(a[i]);
+        const unsigned char cb = static_cast<unsigned char>(b[i]);
+        const unsigned char la = (ca >= 'A' && ca <= 'Z') ? static_cast<unsigned char>(ca + 32U) : ca;
+        const unsigned char lb = (cb >= 'A' && cb <= 'Z') ? static_cast<unsigned char>(cb + 32U) : cb;
+        if (la != lb) return la < lb ? -1 : 1;
+        if (ca == 0U) return std::strcmp(a, b);
+    }
+}
+
+}  // namespace
+
+void sort_wifi_networks(WifiNetwork* networks, std::size_t count) noexcept {
+    if (networks == nullptr) return;
+    // Insertion sort: at most a handful of entries, stable, no allocation.
+    for (std::size_t i = 1U; i < count; ++i) {
+        WifiNetwork moving = networks[i];
+        std::size_t j = i;
+        while (j > 0U && compare_ssid(networks[j - 1U].ssid, moving.ssid) > 0) {
+            networks[j] = networks[j - 1U];
+            --j;
+        }
+        networks[j] = moving;
+        std::memset(moving.password, 0, sizeof(moving.password));
+    }
+}
+
 bool mdns_host_from_name(const char* name, char* out, std::size_t capacity) noexcept {
     constexpr std::size_t kMaxHost = 63U;
     if (name == nullptr || out == nullptr || capacity == 0U) return false;
