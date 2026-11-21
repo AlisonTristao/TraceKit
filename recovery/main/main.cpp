@@ -373,20 +373,31 @@ void wifi_task(void*) {
     while (true) {
         bool was_connected = false;
         for (std::size_t i = 0U; i < g.wifi.count; ++i) {
+#ifdef CONFIG_TRACEKIT_RECOVERY_AP
+            // Someone joined our own network: a station attempt hops channels
+            // and takes the AP with it, dropping them mid-DHCP or mid-upload.
+            if (ap_clients() > 0U) break;
+#endif
             wifi_config_t config{};
-            std::snprintf(reinterpret_cast<char*>(config.sta.ssid), sizeof(config.sta.ssid), "%s",
-                          g.wifi.networks[i].ssid);
-            std::snprintf(reinterpret_cast<char*>(config.sta.password), sizeof(config.sta.password), "%s",
-                          g.wifi.networks[i].password);
+            // memcpy, not snprintf: a 32-character SSID or a 64-character
+            // PSK fills the driver's field with no room for a NUL.
+            const char* ssid = g.wifi.networks[i].ssid;
+            const char* password = g.wifi.networks[i].password;
+            std::memcpy(config.sta.ssid, ssid, strnlen(ssid, sizeof(config.sta.ssid)));
+            std::memcpy(config.sta.password, password, strnlen(password, sizeof(config.sta.password)));
             config.sta.threshold.authmode = WIFI_AUTH_OPEN;
             esp_wifi_disconnect();
+            vTaskDelay(pdMS_TO_TICKS(100));  // let the disconnect's own event pass
             xEventGroupClearBits(g.events, kGotIp | kDisconnected);
             esp_wifi_set_config(WIFI_IF_STA, &config);
-            ESP_LOGI(TAG, "connecting to \"%s\"", g.wifi.networks[i].ssid);
+            ESP_LOGI(TAG, "connecting to \"%s\"", ssid);
             esp_wifi_connect();
-            const EventBits_t bits = xEventGroupWaitBits(g.events, kGotIp, pdFALSE, pdFALSE, pdMS_TO_TICKS(15000));
+            // A network that is not there, or refuses us, ends the attempt at
+            // once (DISCONNECTED) instead of after the full 15 s.
+            const EventBits_t bits =
+                xEventGroupWaitBits(g.events, kGotIp | kDisconnected, pdFALSE, pdFALSE, pdMS_TO_TICKS(15000));
             if ((bits & kGotIp) == 0U) {
-                ESP_LOGW(TAG, "\"%s\": no address in 15 s", g.wifi.networks[i].ssid);
+                ESP_LOGW(TAG, "\"%s\": %s", ssid, (bits & kDisconnected) != 0U ? "not joined" : "no address in 15 s");
                 continue;
             }
             ESP_LOGI(TAG, "ready: http://%s.local/ (%s), upload with tools/btp_ota.py or TraceView's OTA tab",
@@ -443,6 +454,9 @@ esp_err_t handle_status(httpd_req_t* req) {
     bool app_valid, busy;
     {
         Lock lock;
+        // Someone has the page or TraceView's OTA tab open: do not hand the
+        // device back to the application under them.
+        g.last_activity_us = esp_timer_get_time();
         app_valid = g.app_valid;
         busy = g.busy;
         json_escape(g.name, name, sizeof(name));
@@ -768,6 +782,10 @@ void start_http() {
     config.stack_size = 8192;
     config.recv_wait_timeout = 10;
     config.max_uri_handlers = 4;
+    // Browsers, captive-portal probes and TraceView keep idle connections
+    // open; without purging, the 7 sockets fill up and new requests are
+    // dropped ("remote end closed connection without response").
+    config.lru_purge_enable = true;
     httpd_handle_t server = nullptr;
     if (httpd_start(&server, &config) != ESP_OK) {
         ESP_LOGE(TAG, "HTTP server did not start");

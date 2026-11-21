@@ -5,7 +5,8 @@
 #include <esp_log.h>
 #include <esp_rom_sys.h>
 #include <esp_system.h>
-#include <esp_timer.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 #include <hal/wdt_hal.h>
 #include <soc/rtc.h>
 #include <soc/soc.h>
@@ -67,11 +68,18 @@ bool download_mode_supported() noexcept {
 esp_err_t enter_download_mode(std::uint32_t delay_ms) noexcept {
     if (!download_mode_supported()) return ESP_ERR_NOT_SUPPORTED;
     ESP_LOGW(kTag, "restarting into the ROM download mode: flash over USB within %u s", static_cast<unsigned>(kDownloadTimeoutS));
-    esp_timer_create_args_t args{};
-    args.callback = &restart_into_download;
-    args.name = "tracekit_dl";
-    esp_timer_handle_t timer = nullptr;
-    if (esp_timer_create(&args, &timer) != ESP_OK || esp_timer_start_once(timer, delay_ms * 1000ULL) != ESP_OK) {
+    // From a task of its own, not an esp_timer: an application that keeps
+    // the esp_timer task busy (bally_OS read its IMU there at 1 kHz) starved
+    // the callback, and the board never left for the download mode.
+    struct Task {
+        static void run(void* arg) {
+            const auto ms = static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(arg));
+            vTaskDelay(pdMS_TO_TICKS(ms) + 1U);
+            restart_into_download(nullptr);
+        }
+    };
+    if (xTaskCreate(&Task::run, "tk_download", 3072, reinterpret_cast<void*>(static_cast<std::uintptr_t>(delay_ms)),
+                    tskIDLE_PRIORITY + 10U, nullptr) != pdPASS) {
         restart_into_download(nullptr);
     }
     return ESP_OK;

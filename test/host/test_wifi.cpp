@@ -143,6 +143,33 @@ void connects_to_the_first_known_network_in_file_order() {
     CHECK(logic.failures_in_a_row() == 0U);
 }
 
+void a_failing_network_gives_way_to_the_next() {
+    WifiLogic::Timing timing;
+    timing.backoff_min_ms = 1000U;
+    WifiLogic logic(timing);
+    logic.begin(networks, 2U, 0U);
+    const WifiLogic::Visible both[] = {ap("oficina", 6), ap("casa", 11)};
+    auto action = logic.on_scan_done(both, 2U, 0U);
+    CHECK(action.network == 0U);                       // "casa" first
+    logic.on_disconnected(100U);                       // refused (wrong password)
+    CHECK(logic.tick(1100U).kind == WifiLogic::ActionKind::StartScan);
+    action = logic.on_scan_done(both, 2U, 1200U);
+    CHECK(action.kind == WifiLogic::ActionKind::Connect);
+    CHECK(action.network == 1U);                       // "oficina" gets its turn
+    logic.on_disconnected(1300U);
+    CHECK(logic.tick(1300U + 2000U).kind == WifiLogic::ActionKind::StartScan);
+    action = logic.on_scan_done(both, 2U, 3400U);
+    CHECK(action.network == 0U);                       // and back to "casa"
+
+    // Only the failed one visible: it is still tried.
+    logic.on_disconnected(3500U);
+    CHECK(logic.tick(3500U + 4000U).kind == WifiLogic::ActionKind::StartScan);
+    const WifiLogic::Visible only_casa[] = {ap("casa", 11)};
+    action = logic.on_scan_done(only_casa, 1U, 7600U);
+    CHECK(action.kind == WifiLogic::ActionKind::Connect);
+    CHECK(action.network == 0U);
+}
+
 void nothing_visible_backs_off_and_doubles() {
     WifiLogic::Timing timing;
     timing.backoff_min_ms = 1000U;
@@ -252,6 +279,7 @@ int main() {
     setup_networks();
     no_networks_stays_idle();
     connects_to_the_first_known_network_in_file_order();
+    a_failing_network_gives_way_to_the_next();
     nothing_visible_backs_off_and_doubles();
     connect_timeout_disconnects_before_retrying();
     scan_timeout_backs_off();

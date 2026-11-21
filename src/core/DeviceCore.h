@@ -194,6 +194,9 @@ private:
     void mount_storage() noexcept;
     void load_key() noexcept;
     void load_wifi_networks() noexcept;
+    /// DeviceConfig::wifi + the networks file, sorted, into `out` (room for
+    /// kMaxWifiNetworks). Does not touch networks_ (the station may be using it).
+    std::size_t read_wifi_networks(WifiNetwork* out, bool log) noexcept;
     Link resolve_link() noexcept;
     esp_err_t allocate(const PresetSizes& sizes) noexcept;
     esp_err_t create_node(const TraceKit::TopicsFn& topics) noexcept;

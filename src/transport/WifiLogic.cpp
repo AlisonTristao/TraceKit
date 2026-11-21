@@ -11,6 +11,7 @@ WifiLogic::Action WifiLogic::begin(const WifiNetwork* networks, std::size_t coun
     failures_ = 0U;
     backoff_ms_ = 0U;
     last_failure_ = Failure::None;
+    last_failed_ = kNone;
     if (count_ == 0U) {
         state_ = State::Idle;
         return Action{};
@@ -29,6 +30,9 @@ WifiLogic::Action WifiLogic::start_scan(std::uint32_t now_ms) noexcept {
 WifiLogic::Action WifiLogic::fail(Failure failure, std::uint32_t now_ms,
                                   bool disconnect) noexcept {
     last_failure_ = failure;
+    // Only an attempt on a network counts against it; a scan that found
+    // nothing does not.
+    if (state_ == State::Connecting) last_failed_ = current_;
     ++failures_;
     if (backoff_ms_ == 0U) {
         backoff_ms_ = timing_.backoff_min_ms;
@@ -66,7 +70,13 @@ WifiLogic::Action WifiLogic::tick(std::uint32_t now_ms) noexcept {
 WifiLogic::Action WifiLogic::on_scan_done(const Visible* visible, std::size_t count,
                                           std::uint32_t now_ms) noexcept {
     if (state_ != State::Scanning) return Action{};
+    // First pass skips the network whose attempt just failed (a hotspot with
+    // a changed password must not hide every network after it); the second
+    // pass takes it anyway when it is the only one visible.
+    for (int pass = 0; pass < 2; ++pass)
     for (std::size_t n = 0U; n < count_; ++n) {
+        if (pass == 0 && n == last_failed_) continue;
+        if (pass == 1 && n != last_failed_) continue;
         for (std::size_t v = 0U; visible != nullptr && v < count; ++v) {
             if (std::strncmp(visible[v].ssid, networks_[n].ssid, sizeof(visible[v].ssid)) != 0) {
                 continue;
@@ -92,6 +102,7 @@ void WifiLogic::on_got_ip(std::uint32_t now_ms) noexcept {
     (void)now_ms;
     if (state_ != State::Connecting && state_ != State::Connected) return;
     state_ = State::Connected;
+    last_failed_ = kNone;
     failures_ = 0U;
     backoff_ms_ = 0U;
     last_failure_ = Failure::None;

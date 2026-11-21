@@ -1424,38 +1424,42 @@ void DeviceCore::load_key() noexcept {
 }
 
 void DeviceCore::load_wifi_networks() noexcept {
-    network_count_ = 0U;
-    if (device_.wifi.ssid != nullptr && device_.wifi.ssid[0] != '\0') {
-        std::snprintf(networks_[0].ssid, sizeof(networks_[0].ssid), "%s", device_.wifi.ssid);
-        std::snprintf(networks_[0].password, sizeof(networks_[0].password), "%s",
+    network_count_ = read_wifi_networks(networks_, /*log=*/true);
+}
+
+std::size_t DeviceCore::read_wifi_networks(WifiNetwork* out, bool log) noexcept {
+    std::size_t count = 0U;
+    if (device_.wifi.ssid != nullptr && device_.wifi.ssid[0] != ' ') {
+        std::snprintf(out[0].ssid, sizeof(out[0].ssid), "%s", device_.wifi.ssid);
+        std::snprintf(out[0].password, sizeof(out[0].password), "%s",
                       device_.wifi.password != nullptr ? device_.wifi.password : "");
-        network_count_ = 1U;
+        count = 1U;
     }
     FileSystem* volume = fs();
-    if (volume == nullptr || device_.wifi.file == nullptr || !volume->exists(device_.wifi.file)) {
-        ESP_LOGI(tag::kWifi, "%u network(s) known", static_cast<unsigned>(network_count_));
-        return;
-    }
-    static char text[kMaxWifiNetworks * (WifiNetwork::kMaxSsid + WifiNetwork::kMaxPassword + 4U)];
-    std::size_t size = 0U;
-    if (!volume->read(device_.wifi.file, text, sizeof(text), &size)) {
-        ESP_LOGE(tag::kWifi, "%s/%s could not be read (or is larger than %u bytes)", volume->root(),
-                 device_.wifi.file, static_cast<unsigned>(sizeof(text)));
-        return;
-    }
-    const WifiParseResult parsed = parse_wifi_networks(text, size, networks_ + network_count_,
-                                                       kMaxWifiNetworks - network_count_);
-    network_count_ += parsed.networks;
-    std::memset(text, 0, sizeof(text));  // passwords
-    if (parsed.skipped_lines != 0U) {
-        ESP_LOGW(tag::kWifi, "%s: %u line(s) skipped (\"ssid,password\" per line, at most %u networks)",
-                 device_.wifi.file, static_cast<unsigned>(parsed.skipped_lines),
-                 static_cast<unsigned>(kMaxWifiNetworks));
+    if (volume != nullptr && device_.wifi.file != nullptr && volume->exists(device_.wifi.file)) {
+        constexpr std::size_t kCapacity = kMaxWifiNetworks * (WifiNetwork::kMaxSsid + WifiNetwork::kMaxPassword + 4U);
+        std::unique_ptr<char[]> text(new (std::nothrow) char[kCapacity]);
+        std::size_t size = 0U;
+        if (!text || !volume->read(device_.wifi.file, text.get(), kCapacity, &size)) {
+            ESP_LOGE(tag::kWifi, "%s/%s could not be read (or is larger than %u bytes)", volume->root(),
+                     device_.wifi.file, static_cast<unsigned>(kCapacity));
+        } else {
+            const WifiParseResult parsed =
+                parse_wifi_networks(text.get(), size, out + count, kMaxWifiNetworks - count);
+            count += parsed.networks;
+            std::memset(text.get(), 0, kCapacity);  // passwords
+            if (log && parsed.skipped_lines != 0U) {
+                ESP_LOGW(tag::kWifi, "%s: %u line(s) skipped (\"ssid,password\" per line, at most %u networks)",
+                         device_.wifi.file, static_cast<unsigned>(parsed.skipped_lines),
+                         static_cast<unsigned>(kMaxWifiNetworks));
+            }
+        }
     }
     // Tried (and mirrored to the recovery) in alphabetical order, not file
     // order: a phone hotspot named "alison" goes before "Pantanal 3 andar".
-    sort_wifi_networks(networks_, network_count_);
-    ESP_LOGI(tag::kWifi, "%u network(s) known", static_cast<unsigned>(network_count_));
+    sort_wifi_networks(out, count);
+    if (log) ESP_LOGI(tag::kWifi, "%u network(s) known", static_cast<unsigned>(count));
+    return count;
 }
 
 esp_err_t DeviceCore::set_link(Link link) noexcept {
@@ -1560,6 +1564,18 @@ void DeviceCore::register_recovery_commands() noexcept {
                           "after its timeout.\n",
                           host);
             shell_print(text);
+            // The networks file as it is NOW: a `btp -wifi_add` just before
+            // must reach the recovery, not only the next boot of the app.
+            if (device_.recovery.enabled) {
+                std::unique_ptr<WifiNetwork[]> list(new (std::nothrow) WifiNetwork[kMaxWifiNetworks]);
+                if (list) {
+                    const std::size_t count = read_wifi_networks(list.get(), /*log=*/false);
+                    recovery_.mirror(device_.name, list.get(), count);
+                    for (std::size_t i = 0U; i < kMaxWifiNetworks; ++i) {
+                        std::memset(list[i].password, 0, sizeof(list[i].password));
+                    }
+                }
+            }
             // Later: the reply has to leave before the reset.
             return recovery_.enter(recovery::Reason::Command, 800U) == ESP_OK ? RESULT_OK : RESULT_ERROR;
         },
