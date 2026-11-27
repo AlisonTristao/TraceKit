@@ -70,13 +70,14 @@ WifiLogic::Action WifiLogic::tick(std::uint32_t now_ms) noexcept {
 WifiLogic::Action WifiLogic::on_scan_done(const Visible* visible, std::size_t count,
                                           std::uint32_t now_ms) noexcept {
     if (state_ != State::Scanning) return Action{};
-    // First pass skips the network whose attempt just failed (a hotspot with
-    // a changed password must not hide every network after it); the second
-    // pass takes it anyway when it is the only one visible.
-    for (int pass = 0; pass < 2; ++pass)
-    for (std::size_t n = 0U; n < count_; ++n) {
-        if (pass == 0 && n == last_failed_) continue;
-        if (pass == 1 && n != last_failed_) continue;
+    // After a failed attempt the search starts at the network after it and
+    // wraps around, so the failed one comes last: a hotspot with a changed
+    // password must not hide every network after it, and with three or more
+    // failing networks each one still gets its turn (not just the first two).
+    // With no failure (boot, after a connection) list order is the preference.
+    const std::size_t first = last_failed_ < count_ ? last_failed_ + 1U : 0U;
+    for (std::size_t k = 0U; k < count_; ++k) {
+        const std::size_t n = (first + k) % count_;
         for (std::size_t v = 0U; visible != nullptr && v < count; ++v) {
             if (std::strncmp(visible[v].ssid, networks_[n].ssid, sizeof(visible[v].ssid)) != 0) {
                 continue;

@@ -72,8 +72,9 @@ public:
     Action tick(std::uint32_t now_ms) noexcept;
 
     /// A scan finished. Picks the first network, in list order, that is
-    /// visible -- other than the one whose attempt just failed, if any other
-    /// is visible.
+    /// visible. After a failed attempt the search starts at the network after
+    /// the failed one and wraps around (the failed one is tried again only
+    /// when no other is visible).
     /// (The list order is the preference, not the RSSI; DeviceCore
     /// sorts it alphabetically).
     Action on_scan_done(const Visible* visible, std::size_t count, std::uint32_t now_ms) noexcept;

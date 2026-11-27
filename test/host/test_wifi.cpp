@@ -170,6 +170,42 @@ void a_failing_network_gives_way_to_the_next() {
     CHECK(action.network == 0U);
 }
 
+void three_failing_networks_all_get_a_turn() {
+    WifiNetwork three[3];
+    std::snprintf(three[0].ssid, sizeof(three[0].ssid), "alison");
+    std::snprintf(three[1].ssid, sizeof(three[1].ssid), "casa");
+    std::snprintf(three[2].ssid, sizeof(three[2].ssid), "ROBOTA");
+    WifiLogic::Timing timing;
+    timing.backoff_min_ms = 1000U;
+    timing.backoff_max_ms = 1000U;  // fixed delay keeps the clock simple
+    WifiLogic logic(timing);
+    logic.begin(three, 3U, 0U);
+    const WifiLogic::Visible all[] = {ap("ROBOTA", 1), ap("casa", 6), ap("alison", 11)};
+    const std::size_t expected[] = {0U, 1U, 2U, 0U, 1U};
+    std::uint32_t now = 0U;
+    for (std::size_t want : expected) {
+        const auto action = logic.on_scan_done(all, 3U, now);
+        CHECK(action.kind == WifiLogic::ActionKind::Connect);
+        CHECK(action.network == want);
+        logic.on_disconnected(now + 100U);  // every attempt is refused
+        now += 1100U;
+        CHECK(logic.tick(now).kind == WifiLogic::ActionKind::StartScan);
+    }
+
+    // The one after the failed one is not visible: the search wraps past it.
+    // Last failure was "casa" (1); "ROBOTA" (2) is gone, so "alison" (0).
+    const WifiLogic::Visible no_robota[] = {ap("casa", 6), ap("alison", 11)};
+    const auto action = logic.on_scan_done(no_robota, 2U, now);
+    CHECK(action.network == 0U);
+
+    // A connection clears the failure: the next search starts at the top.
+    logic.on_got_ip(now + 100U);
+    logic.on_disconnected(now + 200U);
+    now += 1300U;
+    CHECK(logic.tick(now).kind == WifiLogic::ActionKind::StartScan);
+    CHECK(logic.on_scan_done(all, 3U, now).network == 0U);
+}
+
 void nothing_visible_backs_off_and_doubles() {
     WifiLogic::Timing timing;
     timing.backoff_min_ms = 1000U;
@@ -280,6 +316,7 @@ int main() {
     no_networks_stays_idle();
     connects_to_the_first_known_network_in_file_order();
     a_failing_network_gives_way_to_the_next();
+    three_failing_networks_all_get_a_turn();
     nothing_visible_backs_off_and_doubles();
     connect_timeout_disconnects_before_retrying();
     scan_timeout_backs_off();
